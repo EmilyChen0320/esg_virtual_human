@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "LINE Seed JP";
+  src: url("../LINESeedJP-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --app-font-family: "LINE Seed JP", Arial, -apple-system, system-ui, "Helvetica Neue", sans-serif;
+}
+
+/* 隱藏所有 scrollbar */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
+html,
+body {
+  overflow: hidden; /* 防止整個頁面出現 scrollbar */
+  font-family: var(--app-font-family);
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+#app {
+  overflow: hidden;
+  font-family: var(--app-font-family);
+}
