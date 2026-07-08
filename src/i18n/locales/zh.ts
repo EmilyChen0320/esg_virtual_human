@@ -3,8 +3,8 @@ export default {
     title: "官方帳號"
   },
   footer: {
-    disclaimer: "本虛擬人僅提供資訊協助\n不構成醫療建議。\n如有健康問題\n請洽詢專業醫師。",
-    topDisclaimer: "本虛擬人僅提供資訊協助，不構成醫療建議。\n如有健康問題，請洽詢專業醫師。"
+    disclaimer: "本虛擬人僅提供 ESG 資訊協助\n實際內容請以官方公告為準。",
+    topDisclaimer: "本虛擬人僅提供 ESG 資訊協助，實際內容請以官方公告為準。"
   },
   button: {
     "start-chat": "開始對話",
@@ -22,8 +22,7 @@ export default {
     disconnected: "目前無法連線"
   },
   message: {
-    "ready-opening":
-      "你好，歡迎來到元復醫院，我是元復醫院的智慧AI小元。如果你想了解門診資訊、衛教或醫療相關問題，歡迎使用「開始對話」按鈕與我互動，很高興為您服務。",
+    "ready-opening": "你好，點擊快速問題，即可和我互動喔",
     "need-help": "請問還有我能夠協助的地方嗎?",
     "come-back": "若還有需要我協助的地方，隨時歡迎回來找我。",
     farewell: "期待下次見囉！希望您今天的體驗愉快。",

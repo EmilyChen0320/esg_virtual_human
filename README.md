@@ -1,8 +1,6 @@
 # ESG Virtual Human
 
-三立 ESG 展區用的 AI 虛擬人互動頁。此專案以 Vue 3、TypeScript、Vite 建置，主要提供直式 kiosk 畫面、快速問題清單、ESG API 問答、TTS 語音播放，以及中英文切換。
-
-目前版本只播放 TTS 音訊，尚未支援 lip-sync、WebRTC 虛擬人串流或嘴型同步。
+三立 ESG 展區用的 AI 虛擬人互動頁。此專案以 Vue 3、TypeScript、Vite 建置，提供 9:16 直式 kiosk 畫面、ESG 快速問題、AI 回答、TTS 語音播放、MatesX lip-sync 嘴型同步，以及中英文切換。
 
 ## 功能範圍
 
@@ -13,6 +11,8 @@
 - ESG chat session 建立與問答
 - 顯示使用者題目泡泡與 AI 回答泡泡
 - 回答後呼叫 TTS stream 並播放 WAV 音訊
+- 使用 MatesX 將 TTS PCM 音訊同步推入角色，進行嘴型同步
+- 角色素材支援 `combined_data.json.gz` + `01.webm` 載入
 - 回答或 TTS 播放中可中斷
 - 重啟確認彈窗
 - 本機 API fallback 預覽提示
@@ -23,11 +23,14 @@
 載入頁面
 → 取得 ESG topics
 → 建立 ESG chat session
+→ 初始化 MatesX runtime 與角色素材
 → 使用者點選快速問題
 → 顯示題目泡泡
 → 呼叫 ESG chat/message
 → 顯示 message 回答泡泡
-→ 若 tts_text 有值，呼叫 TTS stream 播放語音
+→ 若 tts_text 有值，呼叫 TTS stream
+→ 讀取 WAV stream，切出 PCM chunk
+→ Web Audio 播放聲音 + MatesX 同步推送嘴型資料
 ```
 
 ## API 串接
@@ -52,7 +55,7 @@ ESG API 負責提供題庫、session 與回答內容。
 
 ### TTS API
 
-TTS API 負責把文字合成 WAV 音訊。
+TTS API 負責把文字合成 WAV 音訊，前端會一邊播放、一邊把 PCM 資料推進 MatesX。
 
 ```text
 POST http://talk-dev.aitago.tw:8001/tts_stream
@@ -71,6 +74,25 @@ POST http://talk-dev.aitago.tw:8001/tts_stream
 
 回應格式為 `audio/wav` blob。TTS 失敗不會阻塞文字回答顯示，只會在 console warning。
 
+### MatesX Runtime
+
+MatesX 負責角色影片與嘴型同步。前端會載入本地 runtime、WASM 與角色素材。
+
+目前使用的資產：
+
+- `public/matesx/js/DHLiveMini2.js`
+- `public/matesx/js/pako.min.js`
+- `public/matesx/wasm/DHLiveMini2.wasm`
+- `public/matesx/assets/aikka/01.webm`
+- `public/matesx/assets/aikka/combined_data.json.gz`
+
+角色影片載入策略：
+
+- 先嘗試 `01_opaque.webm`
+- 若不存在或瀏覽器無法播放，自動 fallback 到 `01.webm`
+
+目前專案已驗證 `01.webm` 可正常顯示並進行 lip-sync。
+
 ## 環境變數
 
 請從 `.env.example` 複製一份 `.env`：
@@ -87,6 +109,9 @@ cp .env.example .env
 | `VITE_TTS_CHARACTER`         | TTS 角色名稱                                               |
 | `VITE_TTS_REPLACEMENT`       | TTS replacement 規則集                                     |
 | `VITE_TTS_SEED`              | TTS 推理 seed                                              |
+| `VITE_MATESX_ASSET_BASE`     | MatesX 靜態資產根路徑                                      |
+| `VITE_MATESX_CHARACTER`      | MatesX 角色資料夾名稱                                      |
+| `VITE_WHEP_URL`              | 保留欄位，目前 ESG 頁面未使用                              |
 | `VITE_ENABLE_MOBILE_CONSOLE` | 是否啟用 Eruda mobile console                              |
 
 `.env` 已被 `.gitignore` 忽略，請不要提交真實 token。
@@ -118,8 +143,8 @@ Vite dev server 預設使用 `http://localhost:3008`。
 pnpm lint
 pnpm build
 pnpm test
-pnpm test:watch
 pnpm test:coverage
+pnpm test:watch
 pnpm format
 ```
 
@@ -128,24 +153,32 @@ pnpm format
 ```text
 src/
 ├── api/
-│   ├── esgApi.ts        # ESG topics/start/message API adapter
-│   └── ttsApi.ts        # TTS stream API adapter
+│   ├── esgApi.ts             # ESG topics/start/message API adapter
+│   └── ttsApi.ts             # TTS stream API adapter
 ├── data/
-│   └── esgFallbackTopics.ts
+│   └── esgFallbackTopics.ts  # topics fallback 資料
+├── i18n/
+│   └── locales/              # 中英文文案
 ├── router/
-│   └── index.ts         # ESG virtual human route
+│   └── index.ts              # 單一路由進入 ESG 頁
+├── services/
+│   └── matesxPlayer.ts       # MatesX runtime + lip-sync 封裝
 ├── types/
 │   └── esg.ts
 ├── views/
-│   └── EsgVirtualHuman.vue
-└── style.css            # LINE Seed JP 字體與全域樣式
+│   └── EsgVirtualHuman.vue   # 主畫面與互動流程
+└── style.css                 # LINE Seed JP 字體與全域樣式
 
 public/
-└── images/
-    ├── esg-hero-bg.png
-    ├── setlogo.png
-    ├── setfuturelogo.png
-    └── icon_*.png
+├── images/
+│   ├── esg-hero-bg.png
+│   ├── setlogo.png
+│   ├── setfuturelogo.png
+│   └── icon_*.png
+└── matesx/
+    ├── assets/aikka/
+    ├── js/
+    └── wasm/
 ```
 
 ## 字體與素材
@@ -163,11 +196,10 @@ public/
 
 ## 目前限制
 
-- 尚未支援 lip-sync / 嘴型同步
-- 尚未支援虛擬人 WebRTC 影片串流
-- 目前只有 TTS 音訊播放
+- 目前是本地 MatesX 影片 + TTS 音訊 + lip-sync，未使用 WebRTC 虛擬人串流
+- `01_opaque.webm` 若未提供，會 fallback 使用 `01.webm`
 - ESG API token 由本機 `.env` 設定，正式部署需確認 token 暴露策略
-- 舊 HC 專案的錄音、STT、WebRTC、影片待機素材已不屬於目前 ESG 虛擬人需求
+- MatesX runtime 與角色素材目前直接放在 `public/matesx/`，後續若更換角色需同步更新素材與 `.env`
 
 ## 驗證
 

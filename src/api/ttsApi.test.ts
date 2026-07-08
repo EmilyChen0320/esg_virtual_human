@@ -12,9 +12,12 @@ beforeEach(() => {
 describe("ttsApi", () => {
   it("posts text with the default TTS voice settings and returns the wav blob", async () => {
     const blob = new Blob(["wav"], { type: "audio/wav" });
-    fetchMock.mockResolvedValue({
+    const response = {
       ok: true,
       blob: () => Promise.resolve(blob)
+    };
+    fetchMock.mockResolvedValue({
+      ...response
     });
 
     const result = await ttsApi.streamSpeech("你好");
@@ -33,6 +36,18 @@ describe("ttsApi", () => {
       })
     );
     expect(result).toBe(blob);
+  });
+
+  it("can return the raw stream response for MatesX playback", async () => {
+    const response = {
+      ok: true,
+      body: new ReadableStream()
+    };
+    fetchMock.mockResolvedValue(response);
+
+    const result = await ttsApi.fetchSpeechStream("你好");
+
+    expect(result).toBe(response);
   });
 
   it("throws when the TTS endpoint returns an error", async () => {

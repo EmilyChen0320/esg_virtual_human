@@ -92,6 +92,7 @@
     "dist/",
     "node_modules/",
     "public/lib/",
+    "public/matesx/",
     "refer/",
     "src/lib/srs.sdk.js",
     "src/style.css"

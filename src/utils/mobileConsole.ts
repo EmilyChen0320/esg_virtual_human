@@ -1,5 +1,5 @@
 const MOBILE_DEBUG_QUERY_PARAM = "mobileDebug";
-const MOBILE_DEBUG_STORAGE_KEY = "hciot_mobile_console_enabled";
+const MOBILE_DEBUG_STORAGE_KEY = "esg_mobile_console_enabled";
 
 let initPromise: Promise<void> | undefined;
 

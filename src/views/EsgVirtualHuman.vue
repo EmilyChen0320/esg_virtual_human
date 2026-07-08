@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { esgApi } from "../api/esgApi";
 import { ttsApi } from "../api/ttsApi";
 import { getFallbackTopics } from "../data/esgFallbackTopics";
+import { MatesxPlayer } from "../services/matesxPlayer";
 import type { EsgDialogEntry, EsgLanguage, EsgTopicCategory } from "../types/esg";
 
 const { locale } = useI18n();
@@ -22,11 +23,14 @@ const isAnswering = shallowRef(false);
 const isTtsPlaying = shallowRef(false);
 const errorMessage = shallowRef("");
 const transcriptRef = shallowRef<HTMLElement | null>(null);
+const matesxCanvasRef = shallowRef<HTMLCanvasElement | null>(null);
 
 let activeController: AbortController | null = null;
 let ttsController: AbortController | null = null;
 let ttsAudio: HTMLAudioElement | null = null;
 let ttsObjectUrl: string | null = null;
+let matesxPlayer: MatesxPlayer | null = null;
+let matesxReadyPromise: Promise<void> | null = null;
 let requestSequence = 0;
 
 const isBusy = computed(() => isAnswering.value || isTtsPlaying.value);
@@ -49,7 +53,7 @@ const copy = computed(() => {
       restartButton: "Restart",
       home: "Home",
       back: "Back",
-      fallbackOpening: "Hello, click Quick Questions to interact with me.",
+      fallbackOpening: "Hello! Click on a quick question to interact with me.",
       restartTitle: "Close the current screen and restart?",
       restartConfirm: "Restart",
       loading: "Loading questions..."
@@ -111,6 +115,7 @@ function setFallbackTopics() {
 function cleanupTtsAudio() {
   ttsController?.abort();
   ttsController = null;
+  matesxPlayer?.stop();
 
   if (ttsAudio) {
     ttsAudio.pause();
@@ -127,6 +132,52 @@ function cleanupTtsAudio() {
   isTtsPlaying.value = false;
 }
 
+async function initializeMatesx() {
+  if (matesxReadyPromise) {
+    return matesxReadyPromise;
+  }
+
+  matesxReadyPromise = nextTick()
+    .then(() => {
+      const canvas = matesxCanvasRef.value;
+      if (!canvas) {
+        throw new Error("MatesX canvas is not mounted");
+      }
+      matesxPlayer = MatesxPlayer.fromEnv(canvas);
+      return matesxPlayer.initialize();
+    })
+    .catch((error) => {
+      matesxReadyPromise = null;
+      matesxPlayer = null;
+      throw error;
+    });
+
+  return matesxReadyPromise;
+}
+
+async function playFallbackAudio(response: Response, sequence: number) {
+  if (sequence !== requestSequence) {
+    return;
+  }
+
+  const audioBlob = await response.blob();
+  if (sequence !== requestSequence) {
+    return;
+  }
+
+  ttsObjectUrl = URL.createObjectURL(audioBlob);
+  const audio = new Audio(ttsObjectUrl);
+  ttsAudio = audio;
+
+  await new Promise<void>((resolve, reject) => {
+    audio.addEventListener("ended", () => resolve(), { once: true });
+    audio.addEventListener("error", () => reject(new Error("Fallback TTS audio failed")), {
+      once: true
+    });
+    audio.play().then(() => undefined, reject);
+  });
+}
+
 async function playTts(text: string, sequence: number) {
   const normalizedText = text.trim();
   if (!normalizedText || sequence !== requestSequence) {
@@ -138,32 +189,31 @@ async function playTts(text: string, sequence: number) {
   isTtsPlaying.value = true;
 
   try {
-    const audioBlob = await ttsApi.streamSpeech(normalizedText, ttsController.signal);
+    const response = await ttsApi.fetchSpeechStream(normalizedText, ttsController.signal);
     if (sequence !== requestSequence) {
       cleanupTtsAudio();
       return;
     }
 
-    ttsObjectUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(ttsObjectUrl);
-    ttsAudio = audio;
-
-    audio.addEventListener(
-      "ended",
-      () => {
-        if (ttsAudio === audio) {
-          cleanupTtsAudio();
-        }
-      },
-      { once: true }
-    );
-
-    await audio.play();
+    try {
+      await initializeMatesx();
+      await matesxPlayer?.playWavStream(response, ttsController.signal);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw error;
+      }
+      console.warn("[esg] matesx playback failed, falling back to audio", error);
+      await playFallbackAudio(response, sequence);
+    }
   } catch (error) {
     if (!(error instanceof DOMException && error.name === "AbortError")) {
       console.warn("[esg] tts stream failed", error);
     }
     cleanupTtsAudio();
+  } finally {
+    if (sequence === requestSequence) {
+      cleanupTtsAudio();
+    }
   }
 }
 
@@ -203,7 +253,7 @@ async function startSession(options: { resetDialogs?: boolean } = {}) {
     }
     sessionId.value = response.session_id;
     if (resetDialogs) {
-      setOpeningMessage(response.opening_message);
+      setOpeningMessage();
     }
   } catch (error) {
     console.warn("[esg] start session fallback", error);
@@ -337,6 +387,9 @@ function handleBack() {
 }
 
 onMounted(async () => {
+  initializeMatesx().catch((error) => {
+    console.warn("[esg] matesx initialization failed", error);
+  });
   await loadTopics();
   await startSession();
 });
@@ -344,12 +397,26 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   activeController?.abort();
   cleanupTtsAudio();
+  matesxPlayer?.dispose();
+  matesxPlayer = null;
 });
 </script>
 
 <template>
   <main class="esg-page" @contextmenu.prevent>
     <section class="esg-stage" aria-label="ESG AI virtual human">
+      <div class="matesx-layer" aria-hidden="true">
+        <canvas id="canvas_video" class="matesx-video-canvas"></canvas>
+        <canvas
+          id="canvas_gl"
+          ref="matesxCanvasRef"
+          class="matesx-engine-canvas"
+          width="180"
+          height="180"
+        ></canvas>
+        <div id="screen" class="matesx-screen"></div>
+      </div>
+
       <img class="brand brand-set-logo" src="/images/setlogo.png" alt="三立集團" />
       <img class="brand brand-future" src="/images/setfuturelogo.png" alt="SET FUTURE" />
 
@@ -470,6 +537,40 @@ onBeforeUnmount(() => {
   object-fit: contain;
   filter: drop-shadow(0 0 0.75cqw rgb(0 0 0 / 0.22));
   pointer-events: none;
+}
+
+.matesx-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.matesx-video-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.matesx-engine-canvas {
+  position: absolute;
+  top: 100px;
+  left: 100px;
+  z-index: 1;
+  width: 180px;
+  height: 180px;
+  opacity: 0.001;
+}
+
+.matesx-screen {
+  position: absolute;
+  right: -1000px;
+  bottom: -1000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 
 .brand-set-logo {

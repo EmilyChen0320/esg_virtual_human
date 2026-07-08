@@ -4,9 +4,9 @@ export default {
   },
   footer: {
     disclaimer:
-      "This virtual human provides information assistance only.\nIt does not constitute medical advice.\nFor health concerns,\nplease consult a professional physician.",
+      "This virtual human provides ESG information assistance only.\nPlease refer to official announcements for final details.",
     topDisclaimer:
-      "This virtual human provides information assistance only; it does not constitute medical advice.\nFor health concerns, please consult a professional physician."
+      "This virtual human provides ESG information assistance only. Please refer to official announcements for final details."
   },
   button: {
     "start-chat": "start",
@@ -24,6 +24,7 @@ export default {
     disconnected: "Connection lost"
   },
   message: {
+    "ready-opening": "Hello! Click on a quick question to interact with me.",
     "need-help": "Is there anything else I can help you with?",
     "come-back": "If you need more help, feel free to come back anytime.",
     farewell: "Looking forward to seeing you next time! Hope you had a great experience today.",

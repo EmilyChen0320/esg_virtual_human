@@ -28,7 +28,7 @@ async function assertOk(response: Response) {
 }
 
 export const ttsApi = {
-  async streamSpeech(text: string, signal?: AbortSignal): Promise<Blob> {
+  async fetchSpeechStream(text: string, signal?: AbortSignal): Promise<Response> {
     const response = await fetch(getTtsStreamUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -42,6 +42,11 @@ export const ttsApi = {
     });
 
     await assertOk(response);
+    return response;
+  },
+
+  async streamSpeech(text: string, signal?: AbortSignal): Promise<Blob> {
+    const response = await this.fetchSpeechStream(text, signal);
     return response.blob();
   }
 };
