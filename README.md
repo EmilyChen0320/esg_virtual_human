@@ -57,10 +57,6 @@ ESG API 負責提供題庫、session 與回答內容。
 
 TTS API 負責把文字合成 WAV 音訊，前端會一邊播放、一邊把 PCM 資料推進 MatesX。
 
-```text
-POST http://talk-dev.aitago.tw:8001/tts_stream
-```
-
 固定 body：
 
 ```json
@@ -101,20 +97,17 @@ MatesX 負責角色影片與嘴型同步。前端會載入本地 runtime、WASM 
 cp .env.example .env
 ```
 
-| 變數                         | 說明                                                       |
-| ---------------------------- | ---------------------------------------------------------- |
-| `VITE_ESG_API_BASE_URL`      | ESG API base URL                                           |
-| `VITE_ESG_API_TOKEN`         | ESG API token，前端以 `Authorization: Bearer <token>` 送出 |
-| `VITE_TTS_STREAM_URL`        | TTS stream endpoint                                        |
-| `VITE_TTS_CHARACTER`         | TTS 角色名稱                                               |
-| `VITE_TTS_REPLACEMENT`       | TTS replacement 規則集                                     |
-| `VITE_TTS_SEED`              | TTS 推理 seed                                              |
-| `VITE_MATESX_ASSET_BASE`     | MatesX 靜態資產根路徑                                      |
-| `VITE_MATESX_CHARACTER`      | MatesX 角色資料夾名稱                                      |
-| `VITE_WHEP_URL`              | 保留欄位，目前 ESG 頁面未使用                              |
-| `VITE_ENABLE_MOBILE_CONSOLE` | 是否啟用 Eruda mobile console                              |
-
-`.env` 已被 `.gitignore` 忽略，請不要提交真實 token。
+| 變數                         | 說明                          |
+| ---------------------------- | ----------------------------- |
+| `VITE_ESG_API_BASE_URL`      | ESG API 位置設定              |
+| `VITE_ESG_API_TOKEN`         | ESG API 驗證設定              |
+| `VITE_TTS_STREAM_URL`        | TTS stream 位置設定           |
+| `VITE_TTS_CHARACTER`         | TTS 角色名稱                  |
+| `VITE_TTS_REPLACEMENT`       | TTS replacement 規則集        |
+| `VITE_TTS_SEED`              | TTS 推理 seed                 |
+| `VITE_MATESX_ASSET_BASE`     | MatesX 靜態資產根路徑         |
+| `VITE_MATESX_CHARACTER`      | MatesX 角色資料夾名稱         |
+| `VITE_ENABLE_MOBILE_CONSOLE` | 是否啟用 Eruda mobile console |
 
 ## 開發環境
 
@@ -198,7 +191,7 @@ public/
 
 - 目前是本地 MatesX 影片 + TTS 音訊 + lip-sync，未使用 WebRTC 虛擬人串流
 - `01_opaque.webm` 若未提供，會 fallback 使用 `01.webm`
-- ESG API token 由本機 `.env` 設定，正式部署需確認 token 暴露策略
+- API 驗證與連線位置由本機 `.env` 設定，正式部署需再確認設定方式
 - MatesX runtime 與角色素材目前直接放在 `public/matesx/`，後續若更換角色需同步更新素材與 `.env`
 
 ## 驗證
