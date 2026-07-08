@@ -751,8 +751,8 @@ onBeforeUnmount(() => {
   border-radius: 3.8cqw 3.8cqw 0 0;
   padding: 3.2cqh 3.2cqw 4.8cqh;
   background:
-    linear-gradient(90deg, rgb(247 230 218 / 0.68), rgb(230 224 217 / 0.58)),
-    rgb(255 255 255 / 0.14);
+    linear-gradient(90deg, rgb(247 230 218 / 0.82), rgb(230 224 217 / 0.78)),
+    rgb(255 255 255 / 0.82);
   backdrop-filter: blur(10px) saturate(1.08);
   -webkit-backdrop-filter: blur(10px) saturate(1.08);
 }
