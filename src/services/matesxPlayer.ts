@@ -169,10 +169,10 @@ async function loadFirstPlayableVideo(video: HTMLVideoElement, sources: string[]
 
 export function getCharacterVideoSources(characterPath: string) {
   return [
-    `${characterPath}/01_opaque.mp4`,
-    `${characterPath}/01.mp4`,
     `${characterPath}/01_opaque.webm`,
-    `${characterPath}/01.webm`
+    `${characterPath}/01.webm`,
+    `${characterPath}/01_opaque.mp4`,
+    `${characterPath}/01.mp4`
   ];
 }
 
