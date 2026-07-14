@@ -51,8 +51,6 @@ const copy = computed(() => {
       quickButton: "Quick",
       interruptButton: "Stop",
       restartButton: "Restart",
-      home: "Home",
-      back: "Back",
       fallbackOpening: "Hello! Click on a quick question to interact with me.",
       restartTitle: "Close the current screen and restart?",
       restartConfirm: "Restart",
@@ -65,8 +63,6 @@ const copy = computed(() => {
     quickButton: "快速問題",
     interruptButton: "中斷",
     restartButton: "重啟",
-    home: "Home",
-    back: "Back",
     fallbackOpening: "你好，點擊快速問題，即可和我互動喔",
     restartTitle: "確認要關閉當前畫面\n並重新啟動嗎？",
     restartConfirm: "確認重啟",
@@ -373,19 +369,6 @@ function cancelRestart() {
   isRestartDialogOpen.value = false;
 }
 
-function handleHome() {
-  handleInterrupt();
-  setOpeningMessage();
-}
-
-function handleBack() {
-  if (isQuestionPanelOpen.value) {
-    isQuestionPanelOpen.value = false;
-    return;
-  }
-  window.history.back();
-}
-
 onMounted(async () => {
   initializeMatesx().catch((error) => {
     console.warn("[esg] matesx initialization failed", error);
@@ -499,11 +482,6 @@ onBeforeUnmount(() => {
           </section>
         </div>
       </Transition>
-
-      <nav class="bottom-nav" aria-label="Page navigation">
-        <button type="button" @click="handleHome">{{ copy.home }}</button>
-        <button type="button" @click="handleBack">{{ copy.back }}</button>
-      </nav>
     </section>
   </main>
 </template>
@@ -693,14 +671,47 @@ onBeforeUnmount(() => {
     0 0.16cqh 0.34cqh rgb(0 0 0 / 0.12);
 }
 
+.dialog-card-system {
+  width: 100%;
+}
+
 .dialog-card-question {
+  display: flex;
   align-self: flex-end;
-  width: min(83%, 78cqw);
+  width: min(62%, 56cqw);
   min-height: 0;
-  padding-block: 1.15cqh;
-  font-size: clamp(0.94rem, 3.05cqw, 2rem);
-  line-height: 1.34;
-  text-align: center;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 1.55cqh 3.3cqw;
+  border: 0.32cqw solid #add37f;
+  border-radius: 3.2cqw;
+  background:
+    linear-gradient(
+      88deg,
+      rgb(239 255 253 / 0.86) 3.31%,
+      rgb(225 255 238 / 0.86) 32.98%,
+      rgb(189 240 252 / 0.86) 70.98%,
+      rgb(237 248 232 / 0.86) 99.72%
+    ),
+    linear-gradient(0deg, rgb(255 255 255 / 0.2) 0%, rgb(255 255 255 / 0.2) 100%),
+    linear-gradient(180deg, rgb(102 102 102 / 0.2) 0%, rgb(102 102 102 / 0) 32.69%),
+    linear-gradient(180deg, rgb(102 102 102 / 0) 50%, rgb(102 102 102 / 0.4) 100%),
+    linear-gradient(0deg, rgb(29 29 29 / 0.2) 0%, rgb(29 29 29 / 0.2) 100%), #1d1d1d;
+  background-blend-mode: normal, normal, plus-lighter, plus-lighter, color-burn, plus-lighter;
+  box-shadow:
+    16px 16px 9px -18px rgb(255 255 255 / 1) inset,
+    -12px -12px 6px -14px rgb(179 179 179 / 1) inset,
+    2px 2px 1px -2px rgb(179 179 179 / 1) inset,
+    0 0 22px 0 rgb(242 242 242 / 0.5) inset;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: #36a030;
+  font-family: var(--app-font-family);
+  font-size: clamp(1.15rem, 3.75cqw, 2.25rem);
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: left;
 }
 
 .dialog-card-answer {
@@ -709,6 +720,11 @@ onBeforeUnmount(() => {
   padding: 2.1cqh 3.7cqw;
   border: 0.32cqw solid rgb(255 255 255 / 0.88);
   color: #3f3f3f;
+  font-family: var(--app-font-family);
+  font-size: clamp(1.15rem, 3.75cqw, 2.25rem);
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.5;
   background:
     linear-gradient(145deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.52)),
     rgb(255 255 255 / 0.48);
@@ -804,28 +820,6 @@ onBeforeUnmount(() => {
   z-index: 6;
   color: rgb(255 255 255 / 0.94);
   text-shadow: 0 0 0.45cqw rgb(0 0 0 / 0.6);
-}
-
-.bottom-nav {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 12;
-  display: grid;
-  width: 31cqw;
-  height: 2.3cqh;
-  grid-template-columns: 1fr 1fr;
-}
-
-.bottom-nav button {
-  border: 0;
-  border-left: 1px solid #878787;
-  color: white;
-  cursor: pointer;
-  font-size: clamp(0.76rem, 2.2cqw, 1.5rem);
-  font-weight: 500;
-  letter-spacing: 0;
-  background: #585858;
 }
 
 .modal-backdrop {
