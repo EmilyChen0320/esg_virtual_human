@@ -12,7 +12,7 @@
 - 顯示使用者題目泡泡與 AI 回答泡泡
 - 回答後呼叫 TTS stream 並播放 WAV 音訊
 - 使用 MatesX 將 TTS PCM 音訊同步推入角色，進行嘴型同步
-- 角色素材支援 `combined_data.json.gz` + `01.webm` 載入
+- 角色素材支援 `combined_data.json.gz` 搭配 `01.webm` 或 `01.mp4` 載入
 - 回答或 TTS 播放中可中斷
 - 重啟確認彈窗
 - 本機 API fallback 預覽提示
@@ -80,12 +80,14 @@ MatesX 負責角色影片與嘴型同步。前端會載入本地 runtime、WASM 
 - `public/matesx/js/pako.min.js`
 - `public/matesx/wasm/DHLiveMini2.wasm`
 - `public/matesx/assets/aikka/01.webm`
+- `public/matesx/assets/aikka/01.mp4`
 - `public/matesx/assets/aikka/combined_data.json.gz`
 
 角色影片載入策略：
 
-- 先嘗試 `01_opaque.webm`
-- 若不存在或瀏覽器無法播放，自動 fallback 到 `01.webm`
+- 先嘗試 `01_opaque.mp4`
+- 若不存在或瀏覽器無法播放，自動 fallback 到 `01.mp4`
+- 若 `mp4` 素材不存在或無法播放，會再 fallback 到 `01_opaque.webm` / `01.webm`
 
 目前專案已驗證 `01.webm` 可正常顯示並進行 lip-sync。
 

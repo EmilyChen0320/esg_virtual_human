@@ -109,12 +109,7 @@ function concatUint8(left: Uint8Array, right: Uint8Array) {
 
 function findDataChunkOffset(bytes: Uint8Array) {
   for (let i = 0; i <= bytes.length - 8; i += 1) {
-    if (
-      bytes[i] === 100 &&
-      bytes[i + 1] === 97 &&
-      bytes[i + 2] === 116 &&
-      bytes[i + 3] === 97
-    ) {
+    if (bytes[i] === 100 && bytes[i + 1] === 97 && bytes[i + 2] === 116 && bytes[i + 3] === 97) {
       return i + 8;
     }
   }
@@ -170,6 +165,15 @@ async function loadFirstPlayableVideo(video: HTMLVideoElement, sources: string[]
   }
 
   throw new Error(errors.map((error) => error.message).join("; "));
+}
+
+export function getCharacterVideoSources(characterPath: string) {
+  return [
+    `${characterPath}/01_opaque.mp4`,
+    `${characterPath}/01.mp4`,
+    `${characterPath}/01_opaque.webm`,
+    `${characterPath}/01.webm`
+  ];
 }
 
 export class MatesxPlayer {
@@ -315,10 +319,10 @@ export class MatesxPlayer {
       window.characterVideo.loop = true;
       window.characterVideo.muted = true;
       window.characterVideo.playsInline = true;
-      const videoSource = await loadFirstPlayableVideo(window.characterVideo, [
-        `${characterPath}/01_opaque.webm`,
-        `${characterPath}/01.webm`
-      ]);
+      const videoSource = await loadFirstPlayableVideo(
+        window.characterVideo,
+        getCharacterVideoSources(characterPath)
+      );
       console.info("[esg] matesx character video loaded", videoSource);
       await window.characterVideo.play();
     }
