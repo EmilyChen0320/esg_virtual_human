@@ -46,6 +46,14 @@ const PCM_CHUNK_BYTES = (SAMPLE_RATE / 10) * BYTES_PER_SAMPLE;
 const PCM_PUSH_INTERVAL_MS = 10;
 const MATESX_RUNTIME_VERSION = "20260708-6";
 
+// MatesX 每幀把模型輸出的嘴型 patch 貼回 canvas_video，來源固定是 180x180。
+// 待機時沒有語音，patch 只是把原生 1080p 的嘴部換成放大後的模型輸出，畫質純虧。
+// 下面這組參數控制「只在說話時才貼 patch」的淡入淡出，請在實機上調。
+const PATCH_SOURCE_SIZE = 180;
+const IDLE_BYPASS_FADE_IN_MS = 200;
+const IDLE_BYPASS_FADE_OUT_MS = 250;
+const IDLE_BYPASS_TAIL_MS = 300;
+
 const scriptState: ScriptState = {
   promise: null
 };
@@ -58,6 +66,12 @@ function getConfiguredAssetBase() {
 
 function getConfiguredCharacter() {
   return (import.meta.env.VITE_MATESX_CHARACTER as string | undefined) || DEFAULT_CHARACTER;
+}
+
+export function isIdleBypassEnabled(
+  value = import.meta.env.VITE_MATESX_IDLE_BYPASS as string | undefined
+) {
+  return !["0", "false", "off", "no"].includes((value ?? "").trim().toLowerCase());
 }
 
 function loadScript(src: string) {
@@ -193,6 +207,14 @@ export class MatesxPlayer {
 
   private nextStartTime = 0;
 
+  private speakStartedAt: number | null = null;
+
+  private speakEndedAt: number | null = null;
+
+  private pendingPatchAlpha: number | null = null;
+
+  private restoreIdleBypass: (() => void) | null = null;
+
   constructor(options: MatesxPlayerOptions) {
     this.assetBase = options.assetBase;
     this.character = options.character;
@@ -209,6 +231,9 @@ export class MatesxPlayer {
 
   async initialize() {
     await ensureScripts(this.assetBase);
+    // 必須在 vendor script 執行完之後才安裝，否則我們會搶先用預設 options 建出
+    // canvas_video 的 2D context，蓋掉 vendor 需要的 willReadFrequently。
+    this.installIdleBypass();
     const createQtAppInstance = window.createQtAppInstance;
     if (!createQtAppInstance) {
       throw new Error("MatesX runtime is not available");
@@ -233,6 +258,17 @@ export class MatesxPlayer {
   async playWavStream(response: Response, signal?: AbortSignal) {
     this.resetPlayback();
     this.instance?._clearAudio();
+    // 刻意在抓到第一個 PCM chunk 之前就開始淡入：提早開的代價只是嘴巴早一點變軟，
+    // 太晚開則會讓第一個音節沒有嘴型，後者明顯得多。
+    this.beginSpeaking();
+    try {
+      await this.streamWavBody(response, signal);
+    } finally {
+      this.endSpeaking();
+    }
+  }
+
+  private async streamWavBody(response: Response, signal?: AbortSignal) {
     const reader = response.body?.getReader();
     if (!reader) {
       await this.playWavBlob(await response.blob(), signal);
@@ -285,12 +321,132 @@ export class MatesxPlayer {
   stop() {
     this.resetPlayback();
     this.instance?._clearAudio();
+    this.endSpeaking();
   }
 
   dispose() {
     this.stop();
+    this.restoreIdleBypass?.();
+    this.restoreIdleBypass = null;
     this.audioContext?.close().catch(() => undefined);
     this.audioContext = null;
+  }
+
+  /**
+   * 待機時讓 vendor 的 patch 不要蓋掉原生 1080p 畫面。
+   *
+   * vendor 每幀在 canvas_video 上做三件事：
+   *   1. clearRect(整幀) + drawImage(characterVideo, 整幀)   ← 銳利的原始影片
+   *   2. clearRect(rect)                                     ← 把嘴部挖掉
+   *   3. drawImage(resizedCanvas, 0,0,180,180 → rect)        ← 補上模型輸出（較軟）
+   *
+   * 只要在待機時跳過 2 和 3，畫面上留下的就是步驟 1 的原生畫質。
+   * 兩個都要跳過 —— 只跳過 3 會在臉上留一個挖空的洞。
+   */
+  private installIdleBypass() {
+    if (!isIdleBypassEnabled() || this.restoreIdleBypass) {
+      return;
+    }
+
+    const canvas = document.getElementById("canvas_video") as HTMLCanvasElement | null;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      console.warn("[esg] matesx idle bypass skipped: canvas_video 2d context unavailable");
+      return;
+    }
+
+    const rawClearRect = context.clearRect.bind(context);
+    const rawDrawImage = context.drawImage.bind(context) as unknown as (...args: unknown[]) => void;
+    const patched = context as unknown as {
+      clearRect: (x: number, y: number, width: number, height: number) => void;
+      drawImage: (...args: unknown[]) => void;
+    };
+
+    patched.clearRect = (x, y, width, height) => {
+      if (width === canvas.width) {
+        rawClearRect(x, y, width, height);
+        return;
+      }
+
+      // 這是步驟 2 的 rect clear。alpha 每幀只算一次，接著給步驟 3 用，
+      // 避免同一幀內兩次取樣跨過淡入淡出的邊界而不一致。
+      const alpha = this.getPatchAlpha();
+      this.pendingPatchAlpha = alpha;
+      if (alpha >= 1) {
+        rawClearRect(x, y, width, height);
+      }
+    };
+
+    patched.drawImage = (...args) => {
+      const isPatch =
+        args.length === 9 && args[3] === PATCH_SOURCE_SIZE && args[4] === PATCH_SOURCE_SIZE;
+      if (!isPatch) {
+        rawDrawImage(...args);
+        return;
+      }
+
+      const alpha = this.pendingPatchAlpha ?? this.getPatchAlpha();
+      this.pendingPatchAlpha = null;
+      if (alpha <= 0) {
+        return;
+      }
+      if (alpha >= 1) {
+        rawDrawImage(...args);
+        return;
+      }
+
+      // 底下的原生影片還在（步驟 2 被跳過），所以這裡是銳利影片與模型輸出的交叉淡化。
+      const previousAlpha = context.globalAlpha;
+      context.globalAlpha = alpha;
+      rawDrawImage(...args);
+      context.globalAlpha = previousAlpha;
+    };
+
+    this.restoreIdleBypass = () => {
+      const owned = context as unknown as Record<string, unknown>;
+      delete owned.clearRect;
+      delete owned.drawImage;
+    };
+    console.info("[esg] matesx idle bypass installed");
+  }
+
+  private beginSpeaking() {
+    this.speakEndedAt = null;
+    if (this.speakStartedAt === null) {
+      this.speakStartedAt = performance.now();
+    }
+  }
+
+  private endSpeaking() {
+    if (this.speakStartedAt !== null && this.speakEndedAt === null) {
+      this.speakEndedAt = performance.now();
+    }
+  }
+
+  private getPatchAlpha() {
+    if (this.speakStartedAt === null) {
+      return 0;
+    }
+
+    const now = performance.now();
+    const sinceStart = now - this.speakStartedAt;
+    const fadeIn =
+      sinceStart >= IDLE_BYPASS_FADE_IN_MS ? 1 : Math.max(0, sinceStart / IDLE_BYPASS_FADE_IN_MS);
+
+    let fadeOut = 1;
+    if (this.speakEndedAt !== null) {
+      const sinceTail = now - this.speakEndedAt - IDLE_BYPASS_TAIL_MS;
+      if (sinceTail >= IDLE_BYPASS_FADE_OUT_MS) {
+        this.speakStartedAt = null;
+        this.speakEndedAt = null;
+        return 0;
+      }
+      if (sinceTail > 0) {
+        fadeOut = 1 - sinceTail / IDLE_BYPASS_FADE_OUT_MS;
+      }
+    }
+
+    return Math.min(fadeIn, fadeOut);
   }
 
   private async loadCharacter() {
