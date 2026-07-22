@@ -501,9 +501,7 @@ onBeforeUnmount(() => {
   width: min(100vw, calc(100svh * 9 / 16));
   aspect-ratio: 9 / 16;
   overflow: hidden;
-  background:
-    linear-gradient(rgb(255 255 255 / 0), rgb(255 255 255 / 0)),
-    url("/images/esg-hero-bg.png") center / cover no-repeat;
+  background: transparent;
   container-type: size;
   color: #1d1d1d;
   user-select: none;

@@ -26,6 +26,10 @@ html,
 body {
   overflow: hidden; /* 防止整個頁面出現 scrollbar */
   font-family: var(--app-font-family);
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 button,
@@ -38,4 +42,6 @@ select {
 #app {
   overflow: hidden;
   font-family: var(--app-font-family);
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
 }

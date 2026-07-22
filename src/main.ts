@@ -5,9 +5,11 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import i18n from "./i18n";
 import router from "./router";
+import { initKioskZoomLock } from "./utils/kioskZoomLock";
 import { initMobileConsole } from "./utils/mobileConsole";
 
 initMobileConsole();
+initKioskZoomLock();
 
 const app = createApp(App);
 app.use(router);
