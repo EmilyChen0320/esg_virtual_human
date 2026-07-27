@@ -151,13 +151,13 @@ async function initializeMatesx() {
   return matesxReadyPromise;
 }
 
-async function playFallbackAudio(response: Response, sequence: number) {
-  if (sequence !== requestSequence) {
+async function playFallbackAudio(response: Response, sequence: number, signal?: AbortSignal) {
+  if (sequence !== requestSequence || signal?.aborted) {
     return;
   }
 
   const audioBlob = await response.blob();
-  if (sequence !== requestSequence) {
+  if (sequence !== requestSequence || signal?.aborted) {
     return;
   }
 
@@ -166,11 +166,35 @@ async function playFallbackAudio(response: Response, sequence: number) {
   ttsAudio = audio;
 
   await new Promise<void>((resolve, reject) => {
-    audio.addEventListener("ended", () => resolve(), { once: true });
-    audio.addEventListener("error", () => reject(new Error("Fallback TTS audio failed")), {
-      once: true
-    });
-    audio.play().then(() => undefined, reject);
+    const cleanup = () => {
+      signal?.removeEventListener("abort", handleAbort);
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("error", handleError);
+    };
+    const handleEnded = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Fallback TTS audio failed"));
+    };
+    const handleAbort = () => {
+      cleanup();
+      audio.pause();
+      reject(new DOMException("Fallback TTS audio aborted", "AbortError"));
+    };
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
+    audio.addEventListener("ended", handleEnded, { once: true });
+    audio.addEventListener("error", handleError, { once: true });
+    audio.play().then(
+      () => undefined,
+      (error) => {
+        cleanup();
+        reject(error);
+      }
+    );
   });
 }
 
@@ -199,13 +223,15 @@ async function playTts(text: string, sequence: number) {
         throw error;
       }
       console.warn("[esg] matesx playback failed, falling back to audio", error);
-      await playFallbackAudio(response, sequence);
+      await playFallbackAudio(response, sequence, ttsController.signal);
     }
   } catch (error) {
     if (!(error instanceof DOMException && error.name === "AbortError")) {
       console.warn("[esg] tts stream failed", error);
     }
-    cleanupTtsAudio();
+    if (sequence === requestSequence) {
+      cleanupTtsAudio();
+    }
   } finally {
     if (sequence === requestSequence) {
       cleanupTtsAudio();
@@ -271,6 +297,11 @@ async function handleQuestionSelect(question: string) {
   isQuestionPanelOpen.value = false;
   errorMessage.value = "";
 
+  const sequence = requestSequence + 1;
+  requestSequence = sequence;
+  activeController?.abort();
+  cleanupTtsAudio();
+
   if (!sessionId.value) {
     await startSession({ resetDialogs: dialogs.value.length === 0 });
   }
@@ -279,9 +310,6 @@ async function handleQuestionSelect(question: string) {
   dialogs.value = [...conversationDialogs, createDialog("question", question)];
   scrollTranscriptToBottom();
 
-  const sequence = requestSequence + 1;
-  requestSequence = sequence;
-  activeController?.abort();
   activeController = new AbortController();
   isAnswering.value = true;
 

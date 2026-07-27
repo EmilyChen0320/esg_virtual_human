@@ -108,9 +108,23 @@ function int16ToFloat32(int16Data: Int16Array) {
   return float32Data;
 }
 
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
+function abortableSleep(ms: number, signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new DOMException("TTS playback aborted", "AbortError");
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, ms);
+
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId);
+      reject(new DOMException("TTS playback aborted", "AbortError"));
+    };
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
   });
 }
 
@@ -207,6 +221,8 @@ export class MatesxPlayer {
 
   private nextStartTime = 0;
 
+  private playbackId = 0;
+
   private speakStartedAt: number | null = null;
 
   private speakEndedAt: number | null = null;
@@ -256,22 +272,26 @@ export class MatesxPlayer {
   }
 
   async playWavStream(response: Response, signal?: AbortSignal) {
+    const playbackId = this.playbackId + 1;
+    this.playbackId = playbackId;
     this.resetPlayback();
     this.instance?._clearAudio();
     // 刻意在抓到第一個 PCM chunk 之前就開始淡入：提早開的代價只是嘴巴早一點變軟，
     // 太晚開則會讓第一個音節沒有嘴型，後者明顯得多。
     this.beginSpeaking();
     try {
-      await this.streamWavBody(response, signal);
+      await this.streamWavBody(response, playbackId, signal);
     } finally {
-      this.endSpeaking();
+      if (this.isCurrentPlayback(playbackId)) {
+        this.endSpeaking();
+      }
     }
   }
 
-  private async streamWavBody(response: Response, signal?: AbortSignal) {
+  private async streamWavBody(response: Response, playbackId: number, signal?: AbortSignal) {
     const reader = response.body?.getReader();
     if (!reader) {
-      await this.playWavBlob(await response.blob(), signal);
+      await this.playWavBlob(await response.blob(), playbackId, signal);
       return;
     }
 
@@ -279,7 +299,7 @@ export class MatesxPlayer {
     let didFindDataChunk = false;
 
     while (true) {
-      if (signal?.aborted) {
+      if (!this.isCurrentPlayback(playbackId) || signal?.aborted) {
         throw new DOMException("TTS playback aborted", "AbortError");
       }
 
@@ -305,20 +325,21 @@ export class MatesxPlayer {
       while (pending.length >= PCM_CHUNK_BYTES) {
         const chunk = pending.slice(0, PCM_CHUNK_BYTES);
         pending = pending.slice(PCM_CHUNK_BYTES);
-        await this.playPcmBytes(chunk);
-        await sleep(PCM_PUSH_INTERVAL_MS);
+        await this.playPcmBytes(chunk, playbackId);
+        await abortableSleep(PCM_PUSH_INTERVAL_MS, signal);
       }
     }
 
     const evenLength = pending.length - (pending.length % BYTES_PER_SAMPLE);
     if (evenLength > 0) {
-      await this.playPcmBytes(pending.slice(0, evenLength));
+      await this.playPcmBytes(pending.slice(0, evenLength), playbackId);
     }
 
-    await this.waitForScheduledAudio(signal);
+    await this.waitForScheduledAudio(playbackId, signal);
   }
 
   stop() {
+    this.playbackId += 1;
     this.resetPlayback();
     this.instance?._clearAudio();
     this.endSpeaking();
@@ -484,16 +505,27 @@ export class MatesxPlayer {
     }
   }
 
-  private async playWavBlob(blob: Blob, signal?: AbortSignal) {
+  private async playWavBlob(blob: Blob, playbackId: number, signal?: AbortSignal) {
     const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (!this.isCurrentPlayback(playbackId) || signal?.aborted) {
+      throw new DOMException("TTS playback aborted", "AbortError");
+    }
     const dataOffset = findDataChunkOffset(bytes);
     const pcmBytes = bytes.slice(dataOffset >= 0 ? dataOffset : 44);
-    await this.playPcmBytes(pcmBytes);
-    await this.waitForScheduledAudio(signal);
+    await this.playPcmBytes(pcmBytes, playbackId);
+    await this.waitForScheduledAudio(playbackId, signal);
   }
 
-  private async playPcmBytes(bytes: Uint8Array) {
+  private async playPcmBytes(bytes: Uint8Array, playbackId: number) {
+    if (!this.isCurrentPlayback(playbackId)) {
+      throw new DOMException("TTS playback aborted", "AbortError");
+    }
+
     const audioContext = await this.ensureAudioContext();
+    if (!this.isCurrentPlayback(playbackId)) {
+      throw new DOMException("TTS playback aborted", "AbortError");
+    }
+
     const rawBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     const int16Data = new Int16Array(rawBuffer);
     const float32Data = int16ToFloat32(int16Data);
@@ -553,20 +585,26 @@ export class MatesxPlayer {
     this.nextStartTime = this.audioContext?.currentTime || 0;
   }
 
-  private async waitForScheduledAudio(signal?: AbortSignal) {
+  private async waitForScheduledAudio(playbackId: number, signal?: AbortSignal) {
     const audioContext = this.audioContext;
     if (!audioContext) {
       return;
     }
 
-    const waitMs = Math.max(0, (this.nextStartTime - audioContext.currentTime) * 1000);
+    const waitMs = this.isCurrentPlayback(playbackId)
+      ? Math.max(0, (this.nextStartTime - audioContext.currentTime) * 1000)
+      : 0;
     if (waitMs > 0) {
-      await sleep(waitMs);
+      await abortableSleep(waitMs, signal);
     }
 
-    if (signal?.aborted) {
+    if (!this.isCurrentPlayback(playbackId) || signal?.aborted) {
       throw new DOMException("TTS playback aborted", "AbortError");
     }
+  }
+
+  private isCurrentPlayback(playbackId: number) {
+    return playbackId === this.playbackId;
   }
 
   private requireInstance() {
