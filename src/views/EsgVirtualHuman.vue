@@ -44,6 +44,19 @@ const quickQuestionIcon = computed(
 const interruptIcon = computed(() => `/images/icon_interrupt_${localizedImageSuffix.value}.png`);
 const restartIcon = computed(() => `/images/icon_restart_${localizedImageSuffix.value}.png`);
 
+const POINTER_CLICK_SUPPRESSION_MS = 700;
+const POINTER_MOVE_TOLERANCE_PX = 16;
+
+interface PressStart {
+  x: number;
+  y: number;
+}
+
+type PressAction = () => unknown;
+
+const pressStarts = new Map<number, PressStart>();
+let lastPointerActivationTime = 0;
+
 const copy = computed(() => {
   if (currentLanguage.value === "en") {
     return {
@@ -397,6 +410,69 @@ function cancelRestart() {
   isRestartDialogOpen.value = false;
 }
 
+function handlePressStart(event: PointerEvent) {
+  if (!event.isPrimary || event.button !== 0) {
+    return;
+  }
+
+  pressStarts.set(event.pointerId, {
+    x: event.clientX,
+    y: event.clientY
+  });
+}
+
+function handlePressCancel(event: PointerEvent) {
+  pressStarts.delete(event.pointerId);
+}
+
+function isWithinPressTolerance(event: PointerEvent) {
+  const start = pressStarts.get(event.pointerId);
+  if (!start) {
+    return true;
+  }
+
+  return (
+    Math.abs(event.clientX - start.x) <= POINTER_MOVE_TOLERANCE_PX &&
+    Math.abs(event.clientY - start.y) <= POINTER_MOVE_TOLERANCE_PX
+  );
+}
+
+function runPressAction(action: PressAction) {
+  const result = action();
+  if (result instanceof Promise) {
+    result.catch((error) => {
+      console.warn("[esg] press action failed", error);
+    });
+  }
+}
+
+function activateFromPointer(event: PointerEvent, action: PressAction) {
+  if (!event.isPrimary || event.button !== 0) {
+    return;
+  }
+
+  const shouldActivate = isWithinPressTolerance(event);
+  pressStarts.delete(event.pointerId);
+  if (!shouldActivate) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  lastPointerActivationTime = performance.now();
+  runPressAction(action);
+}
+
+function activateFromClick(event: MouseEvent, action: PressAction) {
+  event.stopPropagation();
+  if (performance.now() - lastPointerActivationTime < POINTER_CLICK_SUPPRESSION_MS) {
+    event.preventDefault();
+    return;
+  }
+
+  runPressAction(action);
+}
+
 onMounted(async () => {
   initializeMatesx().catch((error) => {
     console.warn("[esg] matesx initialization failed", error);
@@ -436,7 +512,11 @@ onBeforeUnmount(() => {
           class="image-button image-button-small"
           type="button"
           :aria-label="copy.langButton"
-          @click="handleLanguageToggle"
+          @pointerdown="handlePressStart"
+          @pointercancel="handlePressCancel"
+          @pointerleave="handlePressCancel"
+          @pointerup="activateFromPointer($event, handleLanguageToggle)"
+          @click="activateFromClick($event, handleLanguageToggle)"
         >
           <img :src="languageIcon" alt="" />
         </button>
@@ -445,7 +525,19 @@ onBeforeUnmount(() => {
           type="button"
           :aria-label="isBusy ? copy.interruptButton : copy.quickButton"
           :disabled="isStarting"
-          @click="isBusy ? handleInterrupt() : (isQuestionPanelOpen = !isQuestionPanelOpen)"
+          @pointerdown="handlePressStart"
+          @pointercancel="handlePressCancel"
+          @pointerleave="handlePressCancel"
+          @pointerup="
+            activateFromPointer($event, () =>
+              isBusy ? handleInterrupt() : (isQuestionPanelOpen = !isQuestionPanelOpen)
+            )
+          "
+          @click="
+            activateFromClick($event, () =>
+              isBusy ? handleInterrupt() : (isQuestionPanelOpen = !isQuestionPanelOpen)
+            )
+          "
         >
           <img :src="isBusy ? interruptIcon : quickQuestionIcon" alt="" />
         </button>
@@ -453,7 +545,11 @@ onBeforeUnmount(() => {
           class="image-button image-button-small"
           type="button"
           :aria-label="copy.restartButton"
-          @click="requestRestart"
+          @pointerdown="handlePressStart"
+          @pointercancel="handlePressCancel"
+          @pointerleave="handlePressCancel"
+          @pointerup="activateFromPointer($event, requestRestart)"
+          @click="activateFromClick($event, requestRestart)"
         >
           <img :src="restartIcon" alt="" />
         </button>
@@ -491,7 +587,11 @@ onBeforeUnmount(() => {
             class="question-option"
             type="button"
             :disabled="isAnswering"
-            @click="handleQuestionSelect(question.label)"
+            @pointerdown="handlePressStart"
+            @pointercancel="handlePressCancel"
+            @pointerleave="handlePressCancel"
+            @pointerup="activateFromPointer($event, () => handleQuestionSelect(question.label))"
+            @click="activateFromClick($event, () => handleQuestionSelect(question.label))"
           >
             {{ question.label }}
           </button>
@@ -504,7 +604,15 @@ onBeforeUnmount(() => {
         <div v-if="isRestartDialogOpen" class="modal-backdrop" @click.self="cancelRestart">
           <section class="restart-dialog" role="dialog" aria-modal="true">
             <p>{{ copy.restartTitle }}</p>
-            <button type="button" class="restart-confirm" @click="confirmRestart">
+            <button
+              type="button"
+              class="restart-confirm"
+              @pointerdown="handlePressStart"
+              @pointercancel="handlePressCancel"
+              @pointerleave="handlePressCancel"
+              @pointerup="activateFromPointer($event, confirmRestart)"
+              @click="activateFromClick($event, confirmRestart)"
+            >
               {{ copy.restartConfirm }}
             </button>
           </section>
@@ -611,6 +719,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   background: transparent;
   filter: drop-shadow(0 0.18cqh 0.28cqh rgb(0 0 0 / 0.26));
+  touch-action: manipulation;
 }
 
 .image-button:disabled {
@@ -825,6 +934,7 @@ onBeforeUnmount(() => {
     0 0.12cqh 0.24cqh rgb(0 0 0 / 0.08);
   backdrop-filter: blur(8px) saturate(1.12);
   -webkit-backdrop-filter: blur(8px) saturate(1.12);
+  touch-action: manipulation;
 }
 
 .question-option:disabled {
@@ -895,6 +1005,7 @@ onBeforeUnmount(() => {
     rgb(189 240 252 / 0.9),
     rgb(237 248 232 / 0.92)
   );
+  touch-action: manipulation;
 }
 
 .question-panel-enter-active,
