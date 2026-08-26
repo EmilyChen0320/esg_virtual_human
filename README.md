@@ -99,17 +99,16 @@ MatesX 負責角色影片與嘴型同步。前端會載入本地 runtime、WASM 
 cp .env.example .env
 ```
 
-| 變數                         | 說明                          |
-| ---------------------------- | ----------------------------- |
-| `VITE_ESG_API_BASE_URL`      | ESG API 位置設定              |
-| `VITE_ESG_API_TOKEN`         | ESG API 驗證設定              |
-| `VITE_TTS_STREAM_URL`        | TTS stream 位置設定           |
-| `VITE_TTS_CHARACTER`         | TTS 角色名稱                  |
-| `VITE_TTS_REPLACEMENT`       | TTS replacement 規則集        |
-| `VITE_TTS_SEED`              | TTS 推理 seed                 |
-| `VITE_MATESX_ASSET_BASE`     | MatesX 靜態資產根路徑         |
-| `VITE_MATESX_CHARACTER`      | MatesX 角色資料夾名稱         |
-| `VITE_ENABLE_MOBILE_CONSOLE` | 是否啟用 Eruda mobile console |
+| 變數                     | 說明                   |
+| ------------------------ | ---------------------- |
+| `VITE_ESG_API_BASE_URL`  | ESG API 位置設定       |
+| `VITE_ESG_API_TOKEN`     | ESG API 驗證設定       |
+| `VITE_TTS_STREAM_URL`    | TTS stream 位置設定    |
+| `VITE_TTS_CHARACTER`     | TTS 角色名稱           |
+| `VITE_TTS_REPLACEMENT`   | TTS replacement 規則集 |
+| `VITE_TTS_SEED`          | TTS 推理 seed          |
+| `VITE_MATESX_ASSET_BASE` | MatesX 靜態資產根路徑  |
+| `VITE_MATESX_CHARACTER`  | MatesX 角色資料夾名稱  |
 
 ## 開發環境
 
@@ -205,4 +204,4 @@ pnpm lint
 pnpm build
 ```
 
-目前 build 可能出現既有的 Eruda direct `eval` warning，不影響建置完成。
+目前 build 可能出現既有第三方套件的 warning，不影響建置完成。
